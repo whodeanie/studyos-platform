@@ -5,7 +5,7 @@ import re
 
 from .mastery import MasteryModel
 from .models import AuditEvent, QuizQuestion, TutorAnswer
-from .retrieval import CourseIndex
+from .retrieval import CourseIndex, terms
 
 QUIZ_STOPWORDS = {
     "about",
@@ -25,6 +25,7 @@ class StudyOS:
         self.index = CourseIndex()
         self.mastery = MasteryModel()
         self.audit_log: list[AuditEvent] = []
+        self._issued_questions: dict[str, QuizQuestion] = {}
 
     def ingest(self, source_id: str, topic: str, text: str) -> int:
         count = self.index.ingest(source_id, topic, text)
@@ -32,6 +33,9 @@ class StudyOS:
         return count
 
     def ask(self, question: str) -> TutorAnswer:
+        question = question.strip()
+        if not question:
+            raise ValueError("question must be non-empty")
         chunks = self.index.search(question)
         route = self._route(question)
         if not chunks:
@@ -79,13 +83,19 @@ class StudyOS:
                     difficulty=2 if self.mastery.score(topic) < 0.6 else 3,
                 )
             )
+            self._issued_questions[question_id] = questions[-1]
             if len(questions) == count:
                 break
         self._audit("quiz.generated", {"count": len(questions), "topics": [q.topic for q in questions]})
         return questions
 
     def grade(self, question: QuizQuestion, response: str) -> dict[str, object]:
-        correct = question.answer.lower() in response.lower()
+        issued = self._issued_questions.get(question.question_id)
+        if issued != question:
+            raise ValueError("question was not issued by this StudyOS instance")
+        answer_terms = terms(question.answer)
+        response_terms = terms(response)
+        correct = bool(answer_terms) and answer_terms <= response_terms
         score = self.mastery.record(question.topic, correct)
         result = {
             "question_id": question.question_id,
@@ -113,6 +123,8 @@ class StudyOS:
         return {
             "events": len(self.audit_log),
             "routes": routes,
+            "sources": self.index.source_count(),
+            "issued_questions": len(self._issued_questions),
             "mastery": self.mastery.snapshot(self.index.topics()),
         }
 

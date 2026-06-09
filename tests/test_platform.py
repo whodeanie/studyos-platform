@@ -1,4 +1,7 @@
+import pytest
+
 from studyos import StudyOS
+from studyos.models import QuizQuestion
 
 
 def make_platform() -> StudyOS:
@@ -57,3 +60,51 @@ def test_control_plane_records_routes_and_events() -> None:
     assert control["events"] >= 4
     assert control["routes"]["grounded-tutor-fast"] == 1
 
+
+def test_reingesting_a_source_replaces_old_evidence() -> None:
+    platform = StudyOS()
+    platform.ingest("lecture-1", "cell biology", "Mitochondria generate ATP.")
+    platform.ingest("lecture-1", "cell biology", "Mitochondria support cellular respiration.")
+
+    answer = platform.ask("What do mitochondria support?")
+
+    assert answer.citations == ["lecture-1#1"]
+    assert "generate ATP" not in answer.answer
+    assert platform.control_plane()["sources"] == 1
+
+
+def test_grading_requires_an_issued_question() -> None:
+    platform = make_platform()
+    fabricated = QuizQuestion(
+        question_id="fabricated",
+        topic="genetics",
+        prompt="What is DNA?",
+        answer="DNA",
+        explanation="DNA stores hereditary information.",
+        citation="lecture-2#1",
+        difficulty=2,
+    )
+
+    with pytest.raises(ValueError, match="not issued"):
+        platform.grade(fabricated, "DNA")
+
+
+def test_grading_matches_terms_instead_of_substrings() -> None:
+    platform = make_platform()
+    question = platform.generate_quiz(1)[0]
+    before = platform.mastery.score(question.topic)
+
+    result = platform.grade(question, f"{question.answer}ase")
+
+    assert result["correct"] is False
+    assert platform.mastery.score(question.topic) < before
+
+
+def test_blank_questions_are_rejected_without_an_audit_event() -> None:
+    platform = make_platform()
+    before = len(platform.audit_log)
+
+    with pytest.raises(ValueError, match="question"):
+        platform.ask("   ")
+
+    assert len(platform.audit_log) == before

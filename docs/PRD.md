@@ -2,23 +2,22 @@
 
 ## Product
 
-StudyOS is a citation-first study platform for college students preparing for
-exams. It turns course materials into grounded tutoring, adaptive quizzes,
-mastery estimates, and study plans while exposing the operational controls
-needed to run AI features responsibly.
+StudyOS is a small reference implementation for exploring citation-first study
+workflows. It turns supplied text into lexical retrieval results, deterministic
+quiz questions, simple mastery estimates, and weak-topic-first study plans.
 
 ## Problem
 
-General chatbots can answer questions, but they do not know the boundaries of a
-course, reliably cite lecture materials, adapt practice to demonstrated
-weaknesses, or give platform teams visibility into model cost, latency,
-fallbacks, and safety events.
+Ungrounded study assistants can answer outside the supplied course material,
+and learning-state updates become difficult to reason about when model prose is
+treated as product state. This repository makes those boundaries explicit in a
+compact implementation.
 
 ## Users
 
 - Student: uploads course material, asks questions, practices, and follows a plan.
-- Instructor or reviewer: checks citations, question quality, and progress.
-- AI platform team: owns routing policy, auditability, reliability, and release gates.
+- Developer or reviewer: inspects citations, quiz contracts, state updates, and
+  emitted events.
 
 ## Goals
 
@@ -35,6 +34,9 @@ fallbacks, and safety events.
 - Claiming pedagogical or clinical outcomes.
 - Calling a hosted model in the reference implementation.
 - Building authentication, billing, or a production document store.
+- Claiming the lexical retriever, quiz generator, mastery formula, or study plan
+  has been pedagogically validated.
+- Providing durable or tamper-resistant audit storage.
 
 ## Core Workflows
 
@@ -63,9 +65,10 @@ flowchart LR
     Platform --> Audit[Append-only audit log]
 ```
 
-The reference build uses deterministic local implementations behind explicit
-interfaces. Hosted models, vector stores, and databases can replace those
-implementations without changing the product-facing workflow.
+The reference build uses deterministic local implementations and an in-memory
+facade. A production system would need stronger interfaces and persistence
+boundaries before hosted models, vector stores, or databases could be swapped
+in safely.
 
 ## Principal Engineering Decisions
 
@@ -78,9 +81,10 @@ implementations without changing the product-facing workflow.
 
 ## Success Criteria
 
-- Tutor answers always include at least one source citation when evidence exists.
+- Tutor answers include source identifiers when lexical evidence matches.
 - Quiz results update mastery deterministically.
 - Study plans rank weak topics before mastered topics.
 - Every core workflow emits an audit event.
 - Unit and integration tests run in CI with no hosted dependencies.
-
+- Re-ingesting one source replaces stale chunks instead of duplicating evidence.
+- Only questions issued by the current instance can mutate mastery.
